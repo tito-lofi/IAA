@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rues des pédagogues</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap">
+<style>
+/* Carte réelle (OpenStreetMap / Plan IGN) à gauche, panneau Ajouter / Répertoire à droite ; empilés sur téléphone. */
+:root{
+  --bg:#eef1f0; --panel:#ffffff; --field:#f4f6f5; --ink:#17222c; --muted:#56646f; --line:#d3dad8;
+  --plaque:#1d4f91; --accent:#1d4f91; --draft:#c2410c; --ok:#17663a; --err:#b42318;
+  --fd:'Barlow Condensed','Arial Narrow',sans-serif; --fb:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1519; --panel:#172027; --field:#0f1519; --ink:#e5ebee; --muted:#9aa9b4; --line:#2a3640;
+  --plaque:#245aa6; --accent:#7fb2f0; --draft:#fb923c; --ok:#5fd08c; --err:#ff8a7d; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--fb);padding-inline:clamp(16px,2.2vw,28px);padding-block:14px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+[hidden]{display:none!important}
+
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.brand{margin:0;font-size:1em}
+.plaque{display:inline-block;background:var(--plaque);color:#fff;font:600 19px/1.1 var(--fd);letter-spacing:.07em;text-transform:uppercase;
+  padding:7px 14px;border-radius:5px;box-shadow:inset 0 0 0 2px var(--plaque),inset 0 0 0 3.5px rgba(255,255,255,.92)}
+.stats{margin:0;color:var(--muted);font-variant-numeric:tabular-nums;flex:1 1 220px}
+.tools{display:flex;gap:8px;flex:1 1 380px;justify-content:flex-end;flex-wrap:wrap}
+.tools input{flex:1 1 200px;max-width:340px}
+.tools select{width:auto;flex:0 1 170px}
+
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);background:var(--field);border-radius:6px}
+input[type=file]{padding:7px}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
+.btn{border:1px solid var(--plaque);background:var(--plaque);color:#fff;padding:9px 14px;border-radius:6px;font-weight:600;cursor:pointer;width:auto}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{border-color:var(--err);color:var(--err);background:transparent}
+
+.main{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:14px;min-height:0}
+.mapwrap{position:relative;min-height:320px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#map{position:absolute;inset:0;background:#dfe6ea}
+.mapbar{position:absolute;left:10px;top:10px;z-index:800;display:grid;gap:6px;width:min(310px,calc(100% - 150px))}
+.mapbar .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;gap:6px}
+.mapbar .box>*{min-width:0}
+.mapbar input,.mapbar select{padding:7px 8px}
+.geores{list-style:none;margin:0;padding:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;display:grid;gap:2px}
+.geores button{width:100%;text-align:left;background:transparent;border:0;padding:7px 8px;border-radius:5px;cursor:pointer;font-size:13.5px}
+.geores button:hover{background:var(--field)}
+.draft-pin{width:24px;height:24px;border:3px solid var(--draft);border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+.leaflet-container{font-family:var(--fb)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.auth{padding:10px 16px;border-bottom:1px solid var(--line);display:grid;gap:8px;font-size:13.5px}
+.auth form{display:grid;gap:6px}
+.auth .inline{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.seg{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.seg button{background:transparent;border:0;border-bottom:3px solid transparent;padding:12px 8px;font-weight:600;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--plaque)}
+.pane{padding:16px;overflow:auto;min-height:0;flex:1}
+.banner{margin:0;padding:10px 16px;background:var(--field);border-bottom:1px solid var(--line);color:var(--muted);font-size:13px}
+.toast{margin:0;padding:0 16px;font-size:13px;color:var(--ok)}
+.toast:not(:empty){padding:8px 16px;border-bottom:1px solid var(--line)}
+
+form.card{display:grid;gap:13px}
+label{display:grid;gap:5px;font-weight:600;font-size:13px}
+.help,.note{font-weight:400;font-size:12.5px;color:var(--muted)}
+.note.ok{color:var(--ok)} .note.bad,.err{color:var(--err)}
+.lead{margin:0;color:var(--muted)}
+.warn,.sugg{margin:0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:13px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.warn{border-color:var(--draft)}
+.err{margin:0;font-size:13px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.item{border:1px solid var(--line);border-radius:8px;min-width:0}
+.item.sel{border-color:var(--accent)}
+.row{display:grid;gap:6px;width:100%;text-align:left;background:transparent;border:0;padding:10px 12px;cursor:pointer;border-radius:8px;min-width:0}
+.row .plaque{font-size:16px;padding:5px 11px;justify-self:start;max-width:100%;overflow-wrap:anywhere;text-transform:none;letter-spacing:.03em}
+.row .who{font-weight:600}
+.row .where{color:var(--muted);font-size:13.5px}
+.detail{padding:10px 12px 12px;display:grid;gap:8px;font-size:13.5px;border-top:1px dashed var(--line)}
+.detail p{margin:0;overflow-wrap:anywhere}
+.detail img{width:100%;max-height:240px;object-fit:cover;border-radius:6px;display:block}
+.detail .meta{color:var(--muted);font-variant-numeric:tabular-nums}
+.detail .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.detail a{color:var(--accent)}
+.empty{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);margin-bottom:4px}
+
+@media (max-width:860px){
+  html,body{height:auto}
+  .app{height:auto;display:flex;flex-direction:column}
+  .main{grid-template-columns:minmax(0,1fr)}
+  .mapwrap{height:62vh;min-height:360px}
+  .panel,.pane{overflow:visible}
+  .tools{justify-content:stretch}
+  .tools input{max-width:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="brand"><span class="plaque">Rues des pédagogues</span></h1>
+    <p class="stats" id="stats" aria-live="polite">Chargement…</p>
+    <div class="tools">
+      <label class="sr" for="q">Rechercher dans le répertoire</label>
+      <input id="q" type="search" placeholder="Rue, personne, commune…" autocomplete="off">
+      <label class="sr" for="fcat">Filtrer par catégorie</label>
+      <select id="fcat"></select>
+      <label class="sr" for="fgenre">Filtrer par genre</label>
+      <select id="fgenre"></select>
+      <button class="btn ghost" id="export" type="button">Exporter en CSV</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="mapwrap" aria-label="Carte des rues relevées">
+      <div id="map"></div>
+      <div class="mapbar">
+        <div class="box">
+          <label class="sr" for="geo">Chercher une adresse ou une commune</label>
+          <input id="geo" type="search" placeholder="Chercher une adresse, une commune…" autocomplete="off">
+        </div>
+        <ul class="geores" id="geores" hidden></ul>
+        <div class="box">
+          <label class="sr" for="jump">Aller à un territoire</label>
+          <select id="jump"></select>
+          <button class="btn small" id="locate" type="button">Ma position</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="auth" id="auth">
+        <form id="loginform" hidden>
+          <strong>Connexion</strong>
+          <label class="sr" for="email">Courriel</label>
+          <input id="email" type="email" autocomplete="username" placeholder="Courriel" required>
+          <label class="sr" for="pwd">Mot de passe</label>
+          <input id="pwd" type="password" autocomplete="current-password" placeholder="Mot de passe" required>
+          <div class="inline"><button class="btn small" type="submit">Se connecter</button><span class="err" id="loginmsg" role="alert"></span></div>
+        </form>
+        <div class="inline" id="whoami" hidden><span id="whotext"></span><button class="btn ghost small" id="logout" type="button">Se déconnecter</button></div>
+        <form id="nameform" hidden>
+          <label for="myname">Votre nom affiché (visible de vos collègues)</label>
+          <div class="inline"><input id="myname" maxlength="60" required style="flex:1 1 160px"><button class="btn small" type="submit">Enregistrer</button></div>
+        </form>
+      </section>
+      <div class="seg" role="group" aria-label="Panneau">
+        <button id="tab-add" type="button" aria-pressed="true">Ajouter une rue</button>
+        <button id="tab-list" type="button" aria-pressed="false">Répertoire <span id="count"></span></button>
+      </div>
+      <p class="banner" id="banner" hidden></p>
+      <p class="toast" id="toast" role="status"></p>
+
+      <div class="pane" id="pane-add">
+        <form class="card" id="form" novalidate>
+          <p class="lead" id="lead">Devant un panneau ? Cliquez sur la carte à son emplacement (le repère orange se déplace à la main), ou utilisez « Ma position ».</p>
+          <label for="nom">Inscription sur le panneau
+            <input id="nom" required autocomplete="off" placeholder="Rue Jean-Jacques Rousseau">
+          </label>
+          <p class="sugg" id="sugg" hidden><span id="suggtext"></span><button class="btn ghost small" id="suggbtn" type="button">Utiliser ce nom</button></p>
+          <label for="personne">Personne honorée
+            <input id="personne" list="pedagogues" required autocomplete="off" placeholder="Jean-Jacques Rousseau">
+            <datalist id="pedagogues"></datalist>
+          </label>
+          <label for="categorie">Catégorie<select id="categorie"></select></label>
+          <label for="genre">Genre de la personne honorée<select id="genre"></select></label>
+          <label for="commune">Commune
+            <input id="commune" required autocomplete="off" placeholder="Rennes">
+          </label>
+          <label for="coords">Coordonnées GPS
+            <input id="coords" autocomplete="off" placeholder="48.1173, -1.6778">
+            <span class="help">Remplies par le clic sur la carte. Vous pouvez aussi coller « latitude, longitude ».</span>
+            <span class="note" id="coordsMsg" role="status"></span>
+          </label>
+          <label for="photo">Photo du panneau (facultatif)
+            <input id="photo" type="file" accept="image/*">
+            <span class="help">Réduite automatiquement avant l’envoi. Photographiez le panneau, pas les personnes.</span>
+          </label>
+          <label for="note">Précisions (facultatif)
+            <textarea id="note" rows="3" placeholder="État du panneau, date de pose, source de l’inscription…"></textarea>
+          </label>
+          <p class="warn" id="near" hidden></p>
+          <p class="err" id="formMsg" role="alert"></p>
+          <div class="actions">
+            <button class="btn" id="submit" type="submit">Ajouter à la carte</button>
+            <button class="btn ghost" id="clear" type="button">Effacer</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="pane" id="pane-list" hidden><ul class="list" id="list"></ul></div>
+    </aside>
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+'use strict';
+/* ====== CONFIGURATION : à remplacer par les valeurs de VOTRE projet Supabase (voir LISEZMOI.md) ====== */
+var SUPABASE_URL='https://gwsevagiqlewdtqufrfs.supabase.co';
+var SUPABASE_KEY='sb_publishable_jKBuu0Qibpxxg_3zeqUIhg_RPu3t8Ja';
+/* ================================================================================================== */
+
+var CATS=['Pédagogue','Éducateur·rice','Enseignant·e','Réformateur·rice de l’école','Autre'];
+var GENRES=['Femme','Homme','Autre ou collectif','Non précisé'];
+var P=CATS[0],E=CATS[1],M=CATS[2],R=CATS[3];
+var KNOWN=[["Jean-Jacques Rousseau",P],["Johann Heinrich Pestalozzi",P],["Friedrich Fröbel",P],["Jan Amos Comenius",P],["Maria Montessori",P],["Célestin Freinet",P],["Élise Freinet",P],["Ovide Decroly",P],["Janusz Korczak",E],["Roger Cousinet",P],["Fernand Oury",P],["Fernand Deligny",E],["Paulo Freire",P],["John Dewey",P],["Anton Makarenko",E],["Lev Vygotski",P],["Jean Piaget",P],["Henri Wallon",P],["Paul Langevin",R],["François de Fénelon",P],["Paul Robin",P],["Francisco Ferrer",P],["Édouard Séguin",E],["Jean Itard",E],["Charles-Michel de l’Épée",E],["Valentin Haüy",E],["Louis Braille",M],["Jean-Baptiste de La Salle",P],["Jean Bosco",E],["Louise Michel",M],["Pauline Kergomard",P],["Marie Pape-Carpantier",P],["Jules Ferry",R],["Condorcet",R],["Ferdinand Buisson",R],["Jean Macé",R],["Jean Zay",R],["Alexander S. Neill",P]];
+var WOMEN=['Élise Freinet','Maria Montessori','Louise Michel','Pauline Kergomard','Marie Pape-Carpantier'];
+var TERR=[['France métropolitaine',[[41.2,-5.5],[51.2,9.8]]],['Guadeloupe',[[15.8,-61.9],[16.55,-60.95]]],['Martinique',[[14.35,-61.3],[14.95,-60.7]]],['Guyane',[[2.0,-54.7],[5.9,-51.5]]],['La Réunion',[[-21.45,55.15],[-20.8,55.9]]],['Mayotte',[[-13.1,44.95],[-12.6,45.35]]],['Saint-Pierre-et-Miquelon',[[46.7,-56.5],[47.2,-56.05]]],['Nouvelle-Calédonie',[[-22.9,163.4],[-19.5,168.3]]],['Tahiti (Polynésie française)',[[-17.95,-149.9],[-17.3,-149.0]]]];
+var GEOCODER='https://data.geopf.fr/geocodage';
+
+var $=function(id){return document.getElementById(id)};
+function h(tag,attrs){var el=document.createElement(tag);if(attrs)for(var k in attrs){var v=attrs[k];if(v==null||v===false)continue;if(k==='class')el.className=v;else if(k.slice(0,2)==='on')el.addEventListener(k.slice(2),v);else el.setAttribute(k,v===true?'':v)}
+  for(var i=2;i<arguments.length;i++){var kid=arguments[i];if(kid==null||kid===false)continue;el.append(kid.nodeType?kid:document.createTextNode(String(kid)))}return el}
+function norm(s){return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
+function pl(n,s,p){return n+' '+(n>1?p:s)}
+function fmtC(lat,lon){return lat.toFixed(5)+', '+lon.toFixed(5)}
+function genreOf(n){return WOMEN.indexOf(n)>-1?'Femme':'Homme'}
+function dist(a,b,c,d){var R=6371000,r=Math.PI/180,dl=(c-a)*r,dg=(d-b)*r,x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dg/2)*Math.sin(dg/2);return 2*R*Math.asin(Math.sqrt(x))}
+function parseCoords(s){
+  s=String(s).trim();if(!s||/\d\s*['′"″]/.test(s))return null;var parts;
+  if(s.indexOf(';')>-1)parts=s.split(';');
+  else if(/,\s/.test(s))parts=s.split(/,\s+/);
+  else parts=s.replace(/,/g,'.').match(/-?\d+(?:\.\d+)?\s*°?\s*[NSEWOnsewo]?/g)||[];
+  if(parts.length!==2)return null;
+  var n=parts.map(function(p){var m=String(p).replace(',','.').match(/-?\d+(?:\.\d+)?/);if(!m)return NaN;var v=parseFloat(m[0]);return /[SWOswo]\s*$/.test(p)?-Math.abs(v):v});
+  if(!isFinite(n[0])||!isFinite(n[1])||Math.abs(n[0])>90||Math.abs(n[1])>180)return null;
+  return {lat:n[0],lon:n[1]};
+}
+function fill(sel,opts,first){sel.replaceChildren();if(first)sel.append(h('option',{value:''},first));opts.forEach(function(o){sel.append(h('option',null,o))})}
+fill($('fcat'),CATS,'Toutes catégories');fill($('fgenre'),GENRES,'Tous genres');fill($('categorie'),CATS);fill($('genre'),['Non précisé','Femme','Homme','Autre ou collectif']);
+KNOWN.forEach(function(k){$('pedagogues').append(h('option',{value:k[0]}))});
+TERR.forEach(function(t,i){$('jump').append(h('option',{value:i},i?t[0]:'Aller à… '+t[0]))});
+
+/* ---------- État ---------- */
+var sb=null,me=null,profils={},entries=[],visible=[],markers={},selId=null,confirmDel=null,editId=null,draft=null,draftMarker=null,loaded=false,autoFill=true,tab='add';
+var configured=!/VOTRE-/.test(SUPABASE_URL+SUPABASE_KEY);
+
+/* ---------- Carte ---------- */
+var map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
+L.control.zoom({position:'bottomright'}).addTo(map);
+var osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© les contributeurs d’<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).addTo(map);
+var ign=L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}',{maxZoom:19,maxNativeZoom:18,attribution:'© <a href="https://www.ign.fr" target="_blank" rel="noopener">IGN</a>'});
+L.control.layers({'OpenStreetMap':osm,'Plan IGN':ign},null,{position:'topright'}).addTo(map);
+L.control.scale({imperial:false,position:'bottomleft'}).addTo(map);
+var cluster=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45});map.addLayer(cluster);
+map.on('click',function(e){clearSelection();setTab('add');setDraft(e.latlng.lat,e.latlng.lng)});
+$('jump').onchange=function(){var i=+$('jump').value;map.fitBounds(TERR[i][1],{maxZoom:15})};
+$('locate').onclick=function(){
+  if(!navigator.geolocation){toast('La géolocalisation n’est pas disponible sur cet appareil.');return}
+  toast('Recherche de votre position…');
+  navigator.geolocation.getCurrentPosition(function(p){toast('');setTab('add');setDraft(p.coords.latitude,p.coords.longitude);map.setView([p.coords.latitude,p.coords.longitude],18)},
+    function(){toast('Position indisponible : autorisez la localisation dans votre navigateur.')},{enableHighAccuracy:true,timeout:15000})};
+
+/* Recherche d'adresse (géocodeur de la Géoplateforme IGN) */
+var gt;
+$('geo').addEventListener('input',function(){clearTimeout(gt);var q=$('geo').value.trim(),ul=$('geores');if(q.length<3){ul.hidden=true;return}
+  gt=setTimeout(async function(){try{var r=await fetch(GEOCODER+'/search?limit=5&q='+encodeURIComponent(q)),j=await r.json();ul.replaceChildren();
+    (j.features||[]).forEach(function(f){var c=f.geometry.coordinates;ul.append(h('li',null,h('button',{type:'button',onclick:function(){map.setView([c[1],c[0]],f.properties.type==='municipality'?13:17);ul.hidden=true}},f.properties.label)))});
+    ul.hidden=!ul.children.length}catch(_){ul.replaceChildren(h('li',{class:'note'},'Recherche indisponible.'));ul.hidden=false}},300)});
+document.addEventListener('click',function(e){if(!$('geores').contains(e.target)&&e.target!==$('geo'))$('geores').hidden=true});
+
+/* ---------- Point en cours ---------- */
+function setDraft(lat,lon){draft={lat:lat,lon:lon};$('coords').value=fmtC(lat,lon);$('coordsMsg').textContent='Point placé : déplacez le repère pour l’ajuster.';$('coordsMsg').className='note ok';
+  if(!draftMarker){draftMarker=L.marker([lat,lon],{draggable:true,zIndexOffset:1000,icon:L.divIcon({className:'draft-pin',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+    draftMarker.on('dragend',function(){var p=draftMarker.getLatLng();setDraft(p.lat,p.lng)})}
+  else draftMarker.setLatLng([lat,lon]);
+  nearCheck();reverse(lat,lon)}
+function clearDraft(){draft=null;if(draftMarker){map.removeLayer(draftMarker);draftMarker=null}$('sugg').hidden=true;$('near').hidden=true;$('coordsMsg').textContent=''}
+var rt,suggestName='';
+function reverse(lat,lon){clearTimeout(rt);rt=setTimeout(async function(){try{var r=await fetch(GEOCODER+'/reverse?limit=1&lon='+lon+'&lat='+lat),j=await r.json(),p=j.features&&j.features[0]&&j.features[0].properties;
+  if(!p||!draft||draft.lat!==lat||draft.lon!==lon){return}
+  if(p.city&&!$('commune').value)$('commune').value=p.city;
+  var street=(p.street||String(p.name||'').replace(/^\d+\s*(bis|ter|quater)?\s+/i,'')).trim();
+  if(street&&(p.distance==null||p.distance<=120)){suggestName=street;$('suggtext').textContent='Voie la plus proche : '+street+(p.city?', '+p.city:'')+(p.distance!=null?' (à '+Math.round(p.distance)+' m)':'')+'.';$('sugg').hidden=false}
+  else $('sugg').hidden=true}catch(_){}},350)}
+$('suggbtn').onclick=function(){$('nom').value=suggestName;$('nom').dispatchEvent(new Event('input'));$('nom').focus()};
+function nearCheck(){var el=$('near'),nom=norm($('nom').value);el.hidden=true;if(!draft||!nom)return;
+  var d=entries.filter(function(e){return norm(e.nom)===nom&&dist(e.lat,e.lon,draft.lat,draft.lon)<60&&e.id!==editId})[0];
+  if(d){el.textContent='Une fiche « '+d.nom+' » existe déjà à moins de 60 m de ce point.';el.hidden=false}}
+$('coords').addEventListener('change',function(){var v=$('coords').value.trim();if(!v){clearDraft();return}
+  var p=parseCoords(v);if(!p){var m=$('coordsMsg');m.className='note bad';m.textContent='Format non reconnu. Exemple : 48.1173, -1.6778';return}
+  setDraft(p.lat,p.lon);map.setView([p.lat,p.lon],Math.max(map.getZoom(),16))});
+$('nom').addEventListener('input',function(){nearCheck();
+  if(!autoFill)return;var n=norm($('nom').value),k=KNOWN.filter(function(k){return n.indexOf(norm(k[0]))>-1})[0];
+  if(k){$('personne').value=k[0];$('categorie').value=k[1];$('genre').value=genreOf(k[0])}});
+$('personne').addEventListener('input',function(){autoFill=false;var k=KNOWN.filter(function(k){return k[0]===$('personne').value})[0];if(k){$('categorie').value=k[1];$('genre').value=genreOf(k[0])}});
+
+/* ---------- Formulaire ---------- */
+function toast(t){var el=$('toast');el.textContent=t;clearTimeout(toast.t);if(t)toast.t=setTimeout(function(){el.textContent=''},6000)}
+function banner(t){var b=$('banner');b.textContent=t;b.hidden=!t}
+function setTab(t){tab=t;$('tab-add').setAttribute('aria-pressed',t==='add');$('tab-list').setAttribute('aria-pressed',t==='list');$('pane-add').hidden=t!=='add';$('pane-list').hidden=t!=='list'}
+$('tab-add').onclick=function(){setTab('add')};$('tab-list').onclick=function(){setTab('list')};
+function resetForm(){$('form').reset();editId=null;autoFill=true;clearDraft();$('formMsg').textContent='';$('submit').textContent='Ajouter à la carte';$('lead').hidden=false}
+$('clear').onclick=resetForm;
+function canWrite(){return !!(sb&&me)}
+function syncForm(){$('submit').disabled=!canWrite();if(!configured)banner('Configuration manquante : renseignez SUPABASE_URL et SUPABASE_KEY dans index.html (voir LISEZMOI.md).');
+  else if(!me)banner('Vous pouvez consulter la carte. Connectez-vous pour ajouter ou modifier des rues.');else banner('')}
+async function compress(file){var bmp=await createImageBitmap(file),r=Math.min(1,1600/Math.max(bmp.width,bmp.height)),c=document.createElement('canvas');
+  c.width=Math.round(bmp.width*r);c.height=Math.round(bmp.height*r);c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+  return new Promise(function(res){c.toBlob(res,'image/jpeg',.8)})}
+$('form').addEventListener('submit',async function(ev){ev.preventDefault();var msg=$('formMsg');msg.textContent='';
+  if(!canWrite()){msg.textContent='Connectez-vous pour enregistrer une rue.';return}
+  var nom=$('nom').value.trim(),personne=$('personne').value.trim(),commune=$('commune').value.trim(),p=parseCoords($('coords').value);
+  if(!nom){msg.textContent='Indiquez l’inscription du panneau.';$('nom').focus();return}
+  if(!personne){msg.textContent='Indiquez la personne honorée.';$('personne').focus();return}
+  if(!commune){msg.textContent='Indiquez la commune.';$('commune').focus();return}
+  if(!p){msg.textContent='Cliquez sur la carte ou saisissez des coordonnées valides (ex. 48.1173, -1.6778).';$('coords').focus();return}
+  var b=$('submit');b.disabled=true;
+  try{
+    var rec={nom:nom,personne:personne,categorie:$('categorie').value,genre:$('genre').value,commune:commune,note:$('note').value.trim()||null,lat:Math.round(p.lat*1e6)/1e6,lon:Math.round(p.lon*1e6)/1e6};
+    var f=$('photo').files[0];
+    if(f){var blob=await compress(f),path=me.id+'/'+crypto.randomUUID()+'.jpg',up=await sb.storage.from('photos').upload(path,blob,{contentType:'image/jpeg'});if(up.error)throw up.error;rec.photo_path=path}
+    var res=editId?await sb.from('rues').update(rec).eq('id',editId).select().single():await sb.from('rues').insert(Object.assign({auteur_id:me.id},rec)).select().single();
+    if(res.error)throw res.error;
+    selId=res.data.id;toast(editId?'Fiche modifiée.':'Rue ajoutée au répertoire.');resetForm();await loadEntries();map.setView([rec.lat,rec.lon],Math.max(map.getZoom(),15))
+  }catch(err){msg.textContent='Enregistrement impossible : '+((err&&err.message)||'erreur inconnue')}
+  finally{b.disabled=!canWrite()}});
+
+/* ---------- Répertoire ---------- */
+function photoUrl(e){return e.photo_path?sb.storage.from('photos').getPublicUrl(e.photo_path).data.publicUrl:null}
+function clearSelection(){if(selId){selId=null;confirmDel=null;styleMarkers();renderList()}}
+function mk(e){var m=L.circleMarker([e.lat,e.lon],{radius:8,color:'#fff',weight:2,fillColor:'#1d4f91',fillOpacity:1,bubblingMouseEvents:false});
+  m.bindTooltip(e.nom,{direction:'top'});m.on('click',function(){selectEntry(e.id,{})});return m}
+function styleMarkers(){visible.forEach(function(e){var m=markers[e.id];if(m)m.setStyle(e.id===selId?{radius:11,color:'#f5b700',weight:4}:{radius:8,color:'#fff',weight:2})})}
+function selectEntry(id,o){selId=(selId===id&&o.toggle)?null:id;confirmDel=null;setTab('list');styleMarkers();
+  var e=entries.filter(function(x){return x.id===id})[0];if(e&&selId&&o.center)map.setView([e.lat,e.lon],Math.max(map.getZoom(),17));
+  renderList();requestAnimationFrame(function(){var el=$('e-'+id);if(el&&selId)el.scrollIntoView({block:'nearest'})})}
+function renderList(){var ul=$('list');
+  if(!loaded){ul.replaceChildren(h('li',{class:'empty'},'Chargement du répertoire…'));return}
+  if(!visible.length){ul.replaceChildren(h('li',{class:'empty'},h('strong',null,entries.length?'Aucun résultat':'Aucune rue relevée pour l’instant'),entries.length?'Aucune fiche ne correspond à ces filtres.':'Cliquez sur la carte à l’endroit du panneau, puis remplissez la fiche dans l’onglet « Ajouter une rue ».'));return}
+  ul.replaceChildren.apply(ul,visible.map(function(e){
+    var sel=e.id===selId;
+    var li=h('li',{class:'item'+(sel?' sel':''),id:'e-'+e.id},
+      h('button',{class:'row',type:'button','aria-expanded':sel,onclick:function(){selectEntry(e.id,{center:true,toggle:true})}},
+        h('span',{class:'plaque'},e.nom),h('span',{class:'who'},e.personne+' · '+e.categorie+(e.genre==='Non précisé'?'':' · '+e.genre)),h('span',{class:'where'},e.commune)));
+    if(sel){var mine=me&&e.auteur_id===me.id,acts=h('div',{class:'acts'}),pu=photoUrl(e);
+      acts.append(h('a',{href:'https://www.openstreetmap.org/?mlat='+e.lat+'&mlon='+e.lon+'#map=18/'+e.lat+'/'+e.lon,target:'_blank',rel:'noopener'},'Voir sur OpenStreetMap ↗'));
+      if(mine){acts.append(h('button',{class:'btn small ghost',type:'button',onclick:function(){startEdit(e)}},'Modifier'));
+        if(confirmDel===e.id)acts.append(h('button',{class:'btn small danger',type:'button',onclick:function(){delEntry(e)}},'Confirmer la suppression'),h('button',{class:'btn small ghost',type:'button',onclick:function(){confirmDel=null;renderList()}},'Annuler'));
+        else acts.append(h('button',{class:'btn small ghost',type:'button',onclick:function(){confirmDel=e.id;renderList()}},'Supprimer'))}
+      li.append(h('div',{class:'detail'},pu?h('a',{href:pu,target:'_blank',rel:'noopener'},h('img',{src:pu,loading:'lazy',alt:'Photo du panneau « '+e.nom+' »'})):null,e.note?h('p',null,e.note):null,
+        h('p',{class:'meta'},fmtC(e.lat,e.lon)),
+        h('p',{class:'meta'},'Relevé le '+new Date(e.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+' par '+(profils[e.auteur_id]||'un·e collègue')),acts))}
+    return li}))}
+function startEdit(e){editId=e.id;setTab('add');$('nom').value=e.nom;$('personne').value=e.personne;$('categorie').value=e.categorie;$('genre').value=e.genre;$('commune').value=e.commune;$('note').value=e.note||'';autoFill=false;
+  setDraft(e.lat,e.lon);$('sugg').hidden=true;$('submit').textContent='Enregistrer les modifications';$('lead').hidden=true;$('form').scrollIntoView({block:'start'})}
+async function delEntry(e){confirmDel=null;var r=await sb.from('rues').delete().eq('id',e.id);
+  if(r.error){toast('Suppression impossible : '+r.error.message)}else{if(e.photo_path)await sb.storage.from('photos').remove([e.photo_path]);selId=null;toast('Fiche supprimée.');await loadEntries()}}
+
+function filtering(){return !!($('q').value.trim()||$('fcat').value||$('fgenre').value)}
+function rebuild(){var q=norm($('q').value),fc=$('fcat').value,fg=$('fgenre').value;
+  visible=filtering()?entries.filter(function(e){return (!q||e.hay.indexOf(q)>-1)&&(!fc||e.categorie===fc)&&(!fg||e.genre===fg)}):entries;
+  cluster.clearLayers();markers={};var ms=visible.map(function(e){return (markers[e.id]=mk(e))});cluster.addLayers(ms);styleMarkers();stats();renderList()}
+function stats(){var s=$('stats');if(!loaded){s.textContent='Chargement…';return}
+  if(!entries.length){s.textContent='Aucune rue relevée pour l’instant';$('count').textContent='';return}
+  var com={},per={};entries.forEach(function(e){com[norm(e.commune)]=1;per[norm(e.personne)]=1});
+  var nf=entries.filter(function(e){return e.genre==='Femme'}).length;
+  s.textContent=(filtering()?visible.length+' sur ':'')+pl(entries.length,'rue','rues')+' · '+pl(Object.keys(com).length,'commune','communes')+' · '+pl(Object.keys(per).length,'personnalité','personnalités')+' · dont '+pl(nf,'rue de femme','rues de femmes');
+  $('count').textContent='('+entries.length+')'}
+['q','fcat','fgenre'].forEach(function(id){$(id).addEventListener('input',rebuild);$(id).addEventListener('change',rebuild)});
+
+/* ---------- Export CSV ---------- */
+function csvCell(v){v=String(v==null?'':v);if(/^[=+\-@\t\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"'}
+$('export').onclick=function(){
+  var rows=[['inscription_panneau','personne_honoree','categorie','genre','commune','latitude','longitude','precisions','photo','date_releve','releve_par']];
+  entries.slice().reverse().forEach(function(e){rows.push([csvCell(e.nom),csvCell(e.personne),csvCell(e.categorie),csvCell(e.genre),csvCell(e.commune),e.lat,e.lon,csvCell(e.note),csvCell(photoUrl(e)||''),String(e.created_at).slice(0,10),csvCell(profils[e.auteur_id]||'')])});
+  var blob=new Blob(['﻿'+rows.map(function(r){return r.join(';')}).join('\r\n')],{type:'text/csv;charset=utf-8'}),a=h('a',{href:URL.createObjectURL(blob),download:'rues-des-pedagogues.csv'});
+  document.body.append(a);a.click();a.remove()};
+
+/* ---------- Données et connexion ---------- */
+var lt;function scheduleLoad(){clearTimeout(lt);lt=setTimeout(loadEntries,300)}
+async function loadProfils(){var r=await sb.from('profils').select('id,nom');if(!r.error){profils={};(r.data||[]).forEach(function(p){profils[p.id]=p.nom})}}
+async function loadEntries(){if(!sb)return;await loadProfils();
+  var r=await sb.from('rues').select('*').order('created_at',{ascending:false}).limit(5000);
+  if(r.error){banner('Lecture impossible : '+r.error.message);return}
+  entries=(r.data||[]).filter(function(e){return typeof e.lat==='number'&&typeof e.lon==='number'});
+  entries.forEach(function(e){e.hay=norm(e.nom+' '+e.personne+' '+e.commune+' '+e.categorie+' '+e.genre)});
+  loaded=true;if(selId&&!entries.some(function(e){return e.id===selId}))selId=null;rebuild();syncAuthBox()}
+function syncAuthBox(){
+  $('loginform').hidden=!!me||!sb;$('whoami').hidden=!me;
+  if(me){var nom=profils[me.id];$('whotext').textContent=nom?'Connecté·e : '+nom:'Connecté·e';$('nameform').hidden=!!nom}else $('nameform').hidden=true;
+  syncForm()}
+$('loginform').addEventListener('submit',async function(ev){ev.preventDefault();$('loginmsg').textContent='';
+  var r=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('pwd').value});
+  if(r.error)$('loginmsg').textContent='Identifiants incorrects.';else $('pwd').value=''});
+$('logout').onclick=function(){sb.auth.signOut()};
+$('nameform').addEventListener('submit',async function(ev){ev.preventDefault();var n=$('myname').value.trim();if(!n||!me)return;
+  var r=await sb.from('profils').upsert({id:me.id,nom:n});if(r.error)toast('Enregistrement du nom impossible : '+r.error.message);else{profils[me.id]=n;syncAuthBox();renderList()}});
+
+function init(){
+  rebuild();syncForm();
+  if(!configured||!window.supabase){loaded=true;$('stats').textContent='Répertoire indisponible';renderList();$('loginform').hidden=true;return}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  sb.auth.onAuthStateChange(function(_e,s){me=s?s.user:null;syncAuthBox();renderList()});
+  loadEntries();
+  sb.channel('rues-live').on('postgres_changes',{event:'*',schema:'public',table:'rues'},scheduleLoad).subscribe()}
+init();
+})();
+</script>
+</body>
+</html>
